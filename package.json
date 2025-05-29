@@ -16,7 +16,8 @@
     "shopify": "shopify",
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
-    "vite": "vite"
+    "vite": "vite",
+    "compress-images": "node scripts/compress.js"
   },
   "type": "module",
   "engines": {
@@ -38,6 +39,7 @@
     "prisma": "^6.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "sharp": "^0.34.2",
     "vite-tsconfig-paths": "^5.0.1"
   },
   "devDependencies": {

@@ -6,8 +6,6 @@ import tsconfigPaths from "vite-tsconfig-paths";
 installGlobals({ nativeFetch: true });
 
 // Related: https://github.com/remix-run/remix/issues/2835#issuecomment-1144102176
-// Replace the HOST env var with SHOPIFY_APP_URL so that it doesn't break the remix server. The CLI will eventually
-// stop passing in HOST, so we can remove this workaround after the next major release.
 if (
   process.env.HOST &&
   (!process.env.SHOPIFY_APP_URL ||
@@ -39,15 +37,33 @@ if (host === "localhost") {
 
 export default defineConfig({
   server: {
-    allowedHosts: [host],
-    cors: {
-      preflightContinue: true,
-    },
+    host: "localhost",
     port: Number(process.env.PORT || 3000),
     hmr: hmrConfig,
     fs: {
-      // See https://vitejs.dev/config/server-options.html#server-fs-allow for more information
-      allow: ["app", "node_modules"],
+      // Restrict files that could be served by Vite's dev server.  Accessing
+      // a file that isn't in this list will result in a 403.  Both directories
+      // and files can be provided.
+      //
+      // We also have to explicitly allow the directory with the generated
+      // version-hash.json to explicitly allow served filepaths with a dot
+      // in production.  This is needed as by default, in production Vite adds
+      // a dot prefix to immutable assets, but doesn't have access to SSR
+      // files when running that check.
+      // See https://github.com/shopify/hydrogen-v1/pull/3870
+      deny: [
+        "**/.env",
+        "**/.env.*",
+        "**/.git",
+        "**/.git/*",
+        "**/.gitignore",
+        "**/.gitmodules",
+        "**/node_modules",
+        "**/node_modules/*",
+        "**/.cache",
+        "**/.cache/*",
+        "**/.DS_Store",
+      ],
     },
   },
   plugins: [
@@ -57,17 +73,14 @@ export default defineConfig({
         v3_fetcherPersist: true,
         v3_relativeSplatPath: true,
         v3_throwAbortReason: true,
-        v3_lazyRouteDiscovery: true,
-        v3_singleFetch: false,
-        v3_routeConfig: true,
       },
     }),
     tsconfigPaths(),
   ],
+  optimizeDeps: {
+    include: ["@shopify/polaris"],
+  },
   build: {
     assetsInlineLimit: 0,
-  },
-  optimizeDeps: {
-    include: ["@shopify/app-bridge-react", "@shopify/polaris"],
   },
 });

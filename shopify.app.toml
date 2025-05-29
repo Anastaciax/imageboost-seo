@@ -3,7 +3,7 @@
 client_id = "3fbedd23c542c41765e8e745c828043f"
 name = "ImageBoost SEO"
 handle = "imageboost-seo"
-application_url = "https://karen-pro-shock-blog.trycloudflare.com"
+application_url = "https://ringtones-far-inkjet-producer.trycloudflare.com"
 embedded = true
 
 [build]
@@ -23,13 +23,13 @@ api_version = "2025-04"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products"
+scopes = "write_products,read_products"
 
 [auth]
 redirect_urls = [
-  "https://karen-pro-shock-blog.trycloudflare.com/auth/callback",
-  "https://karen-pro-shock-blog.trycloudflare.com/auth/shopify/callback",
-  "https://karen-pro-shock-blog.trycloudflare.com/api/auth/callback"
+  "https://ringtones-far-inkjet-producer.trycloudflare.com/auth/callback",
+  "https://ringtones-far-inkjet-producer.trycloudflare.com/auth/shopify/callback",
+  "https://ringtones-far-inkjet-producer.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]

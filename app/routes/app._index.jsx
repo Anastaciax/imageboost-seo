@@ -12,7 +12,7 @@ import {
   Link,
   InlineStack,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }) => {
@@ -106,11 +106,11 @@ export default function Index() {
 
   return (
     <Page>
-      <TitleBar title="Remix app template">
-        <button variant="primary" onClick={generateProduct}>
-          Generate a product
+      <div style={{ marginBottom: '1rem' }}>
+        <button onClick={generateProduct} disabled={isLoading}>
+          {isLoading ? "Generating..." : "Generate a product"}
         </button>
-      </TitleBar>
+      </div>
       <BlockStack gap="500">
         <Layout>
           <Layout.Section>

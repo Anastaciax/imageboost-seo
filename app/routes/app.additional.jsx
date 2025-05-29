@@ -1,5 +1,4 @@
 import {
-  Box,
   Card,
   Layout,
   Link,
@@ -67,17 +66,17 @@ export default function AdditionalPage() {
 
 function Code({ children }) {
   return (
-    <Box
-      as="span"
-      padding="025"
-      paddingInlineStart="100"
-      paddingInlineEnd="100"
-      background="bg-surface-active"
-      borderWidth="025"
-      borderColor="border"
-      borderRadius="100"
+    <span
+      style={{
+        padding: '0.125rem 0.25rem',
+        backgroundColor: 'var(--p-color-bg-surface-active)',
+        border: '1px solid var(--p-color-border)',
+        borderRadius: '0.25rem',
+        fontFamily: 'monospace',
+        fontSize: '0.875em',
+      }}
     >
-      <code>{children}</code>
-    </Box>
+      {children}
+    </span>
   );
 }

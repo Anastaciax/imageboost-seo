@@ -3,7 +3,7 @@
 client_id = "3fbedd23c542c41765e8e745c828043f"
 name = "ImageBoost SEO"
 handle = "imageboost-seo"
-application_url = "https://gc-lies-periods-venues.trycloudflare.com"
+application_url = "https://swedish-bailey-ed-annotation.trycloudflare.com"
 embedded = true
 
 [build]
@@ -27,9 +27,9 @@ scopes = "write_products"
 
 [auth]
 redirect_urls = [
-  "https://gc-lies-periods-venues.trycloudflare.com/auth/callback",
-  "https://gc-lies-periods-venues.trycloudflare.com/auth/shopify/callback",
-  "https://gc-lies-periods-venues.trycloudflare.com/api/auth/callback"
+  "https://swedish-bailey-ed-annotation.trycloudflare.com/auth/callback",
+  "https://swedish-bailey-ed-annotation.trycloudflare.com/auth/shopify/callback",
+  "https://swedish-bailey-ed-annotation.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]

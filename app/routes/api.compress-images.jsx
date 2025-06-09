@@ -2,6 +2,7 @@ import { json } from '@remix-run/node';
 import { authenticate } from '../shopify.server';
 import { compressMultipleImages as tinifyCompress } from '../utils/imageCompression.server';
 import { compressMultipleImages as sharpCompress } from '../utils/sharpCompression.server';
+import { findStoredImage, storeCompressedImage } from '../utils/firebaseStorage.server';
 
 export async function action({ request }) {
   console.log('=== Compression Request Received ===');
@@ -68,24 +69,125 @@ export async function action({ request }) {
       const url = imageUrls[i];
       try {
         console.log(`\n--- Processing image ${i + 1}/${imageUrls.length}: ${url} ---`);
-        const compressionResult = await compressFunction([url], compressionOptions).next();
-        console.log('Compression iteration result:', {
-          done: compressionResult.done,
-          hasValue: !!compressionResult.value
+        
+        // Try to find existing compressed image in storage first
+        const storedImage = await findStoredImage(url);
+        if (storedImage) {
+          console.log('Found existing compressed image in storage:', storedImage.url);
+          results.push({
+            url,
+            success: true,
+            originalSize: storedImage.originalSize || 0,
+            compressedSize: storedImage.size || 0,
+            savings: storedImage.originalSize ? (1 - (storedImage.size / storedImage.originalSize)) : 0,
+            format: storedImage.format || 'webp',
+            compressedUrl: storedImage.url,
+            fromCache: true
+          });
+          continue;
+        }
+
+        // If not found in storage, compress the image
+        console.log('No cached version found, compressing...');
+        
+        // Get the generator and process all results
+        console.log('Creating compression generator...');
+        let compressionGenerator;
+        let result = null;
+        let compressionResults = [];
+        
+        try {
+          compressionGenerator = compressFunction([url], compressionOptions);
+          console.log('Generator created, processing results...');
+          
+          // Process all yielded values from the generator
+          const firstYield = await compressionGenerator.next();
+          
+          if (firstYield.done) {
+            console.log('Generator completed without yielding any results');
+          } else if (firstYield.value) {
+            compressionResults = Array.isArray(firstYield.value) ? firstYield.value : [firstYield.value];
+            console.log('First yield from generator:', {
+              isArray: Array.isArray(firstYield.value),
+              resultsCount: compressionResults.length,
+              firstResultKeys: compressionResults[0] ? Object.keys(compressionResults[0]) : 'none'
+            });
+            
+            // Get the first successful result with a buffer
+            result = compressionResults.find(r => r?.success && r?.buffer);
+            
+            // If we didn't get a successful result, try to get any result
+            if (!result && compressionResults.length > 0) {
+              result = compressionResults[0];
+              console.log('Using first available result (may not be successful)');
+            }
+          }
+        } catch (genError) {
+          console.error('Error in compression generator:', {
+            name: genError.name,
+            message: genError.message,
+            stack: genError.stack
+          });
+          throw new Error(`Compression failed: ${genError.message}`);
+        }
+        
+        console.log('Selected result:', {
+          success: result?.success,
+          hasBuffer: !!result?.buffer,
+          originalSize: result?.originalSize,
+          compressedSize: result?.compressedSize,
+          savings: result?.savings,
+          format: result?.format
         });
         
-        const result = compressionResult.value?.[0];
-        if (result) {
+        if (result?.success && result?.buffer) {
+          const savings = 1 - (result.compressedSize / result.originalSize);
           console.log('Compression successful:', {
-            success: result.success,
             originalSize: result.originalSize,
             compressedSize: result.compressedSize,
-            format: result.format,
-            error: result.error
+            calculatedSavings: `${(savings * 100).toFixed(2)}%`,
+            reportedSavings: result.savings ? `${(result.savings * 100).toFixed(2)}%` : 'none',
+            format: result.format
           });
-          results.push(result);
+          
+          // Store the compressed image in Firebase Storage
+          console.log('Storing compressed image in Firebase...');
+          try {
+            const storedImage = await storeCompressedImage(
+              result.buffer,
+              url,
+              {
+                originalSize: result.originalSize,
+                compressionStrategy: strategy
+              }
+            );
+            console.log('Image stored successfully at:', storedImage.url);
+            
+            results.push({
+              ...result,
+              savings: result.savings || savings, // Use calculated savings if not provided
+              compressedUrl: storedImage.url,
+              fromCache: false
+            });
+          } catch (storageError) {
+            console.error('Error storing image in Firebase:', storageError);
+            // Still return the result even if storage fails
+            results.push({
+              ...result,
+              savings: result.savings || savings,
+              compressedUrl: url, // Fallback to original URL
+              fromCache: false,
+              storageError: storageError.message
+            });
+          }
         } else {
           console.warn('No result returned from compression function');
+          results.push({
+            url,
+            success: false,
+            error: 'Compression failed',
+            strategy
+          });
         }
         
         // Log progress
@@ -93,11 +195,23 @@ export async function action({ request }) {
         console.log(`Progress: ${progress}% - Processed ${i + 1} of ${imageUrls.length} images`);
         
       } catch (error) {
-        console.error(`Error processing image ${url} with ${strategy}:`, error);
+        console.error(`Error processing image ${url} with ${strategy}:`, {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          code: error.code,
+          details: error.details || 'No additional details'
+        });
+        
         results.push({
           url,
           success: false,
           error: error.message,
+          errorDetails: {
+            code: error.code,
+            name: error.name,
+            details: error.details
+          },
           strategy
         });
       }

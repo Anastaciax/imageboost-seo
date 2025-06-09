@@ -3,7 +3,7 @@
 client_id = "3fbedd23c542c41765e8e745c828043f"
 name = "ImageBoost SEO"
 handle = "imageboost-seo"
-application_url = "https://acrobat-mega-guaranteed-dozen.trycloudflare.com"
+application_url = "https://balanced-bold-outsourcing-affair.trycloudflare.com"
 embedded = true
 
 [build]
@@ -27,9 +27,9 @@ scopes = "write_products,read_products"
 
 [auth]
 redirect_urls = [
-  "https://acrobat-mega-guaranteed-dozen.trycloudflare.com/auth/callback",
-  "https://acrobat-mega-guaranteed-dozen.trycloudflare.com/auth/shopify/callback",
-  "https://acrobat-mega-guaranteed-dozen.trycloudflare.com/api/auth/callback"
+  "https://balanced-bold-outsourcing-affair.trycloudflare.com/auth/callback",
+  "https://balanced-bold-outsourcing-affair.trycloudflare.com/auth/shopify/callback",
+  "https://balanced-bold-outsourcing-affair.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]

@@ -9,6 +9,7 @@ import {
 } from "@remix-run/react";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import shopify from "./shopify.server.js";
+import { Frame } from "@shopify/polaris";
 
 export async function loader({ request }) {
   await shopify.authenticate.admin(request);
@@ -28,7 +29,9 @@ export default function Root() {
       </head>
       <body>
         <AppProvider apiKey={apiKey} isEmbeddedApp>
+        <Frame>
           <Outlet />
+        </Frame>
         </AppProvider>
 
         <ScrollRestoration />

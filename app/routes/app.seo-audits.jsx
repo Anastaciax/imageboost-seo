@@ -8,7 +8,6 @@ import {
   Badge,
   Button,
   Popover,
-  ActionList,
   TextField,
   Select,
   ProgressBar,
@@ -100,7 +99,7 @@ export default function SeoAuditsRoute() {
   });
 
   /* start compression */
-  function compressUrls(urls) {
+  function compressUrls(urls, strategy = 'tinify') {
     if (!urls.length) return;
 
     setComp(prev => ({
@@ -114,9 +113,19 @@ export default function SeoAuditsRoute() {
       loadingByUrl: { ...prev.loadingByUrl, [urls[0]]: true },
     }));
 
-    const fd = new FormData();
-    fd.append('imageUrls', JSON.stringify(urls));
-    fetcher.submit(fd, { method: 'POST', action: '/api/compress-images', encType: 'multipart/form-data' });
+    // Create a FormData object to submit the files
+    const formData = new FormData();
+    formData.append('strategy', strategy);
+    urls.forEach(url => formData.append('urls', url));
+
+    console.log('Submitting to /api/compress-images with strategy:', strategy);
+    
+    // Submit the form data using the fetcher
+    fetcher.submit(formData, {
+      method: 'POST',
+      action: '/api/compress-images',
+      encType: 'multipart/form-data'
+    });
   }
 
   /* fetcher response */
@@ -297,6 +306,12 @@ export default function SeoAuditsRoute() {
 /* small popover */
 function CompressPopover({ image, onCompress, loading }) {
   const [open, setOpen] = useState(false);
+  
+  const handleCompress = (strategy) => {
+    onCompress([image.imageUrl], strategy);
+    setOpen(false);
+  };
+
   return (
     <Popover
       active={open}
@@ -307,14 +322,33 @@ function CompressPopover({ image, onCompress, loading }) {
         </Button>
       }
     >
-      <Box padding="4" width="64">
-        <ActionList items={[{
-          content: 'Compress this image',
-          onAction() {
-            onCompress([image.imageUrl]);
-            setOpen(false);
-          },
-        }]} />
+      <Box padding="4" width="200">
+        <Button
+          fullWidth
+          onClick={() => handleCompress('sharp')}
+          loading={loading}
+          disabled={loading}
+          size="slim"
+          tone="primary"
+          variant="primary"
+          textAlign="left"
+        >
+          Compress with Sharp
+        </Button>
+        <Box paddingBlockStart="2">
+          <Button
+            fullWidth
+            onClick={() => handleCompress('tinify')}
+            loading={loading}
+            disabled={loading}
+            size="slim"
+            tone="primary"
+            variant="secondary"
+            textAlign="left"
+          >
+            Compress with Tinify
+          </Button>
+        </Box>
       </Box>
     </Popover>
   );

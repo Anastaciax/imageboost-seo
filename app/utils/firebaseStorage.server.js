@@ -24,47 +24,69 @@ export async function storeCompressedImage(imageBuffer, originalUrl, metadata = 
       throw new Error('Image buffer is empty');
     }
     
-    // Generate a unique filename
-    const fileExtension = 'webp';
-    const fileName = `compressed/${uuidv4()}.${fileExtension}`;
+    // Get format from metadata or default to webp
+    const format = (metadata.format || 'webp').toLowerCase();
+    console.log('[Storage] Received format from metadata:', format);
+    console.log('[Storage] Full metadata:', JSON.stringify(metadata, null, 2));
+    
+    // Normalize format for content type (jpeg → jpg, etc.)
+    const normalizedFormat = format === 'jpeg' ? 'jpg' : format;
+    console.log('[Storage] Normalized format:', normalizedFormat);
+    
+    // Get correct content type for the format
+    const contentType = `image/${format === 'jpg' ? 'jpeg' : format}`;
+    console.log('[Storage] Content-Type:', contentType);
+    
+    const fileName = `compressed/${uuidv4()}.${normalizedFormat}`;
     const file = bucket.file(fileName);
     
-    console.log('Generated filename:', fileName);
-    console.log('Storage bucket:', bucket.name);
+    console.log('[Storage] Generated filename:', fileName);
+    console.log('[Storage] Full file path:', file.name);
+    console.log('[Storage] Storage bucket:', bucket.name);
+    console.log('Content-Type:', contentType);
 
-    // Upload the file to Firebase Storage
+    // Upload the file to Firebase Storage (using token so Firebase console can preview/download)
     console.log('Uploading to Firebase Storage...');
+    const downloadToken = uuidv4(); // Firebase console relies on this token
     try {
       await file.save(imageBuffer, {
         metadata: {
-          contentType: `image/${fileExtension}`,
+          contentType: contentType,
           metadata: {
+            firebaseStorageDownloadTokens: downloadToken, // make available in console
             originalUrl,
+            format: normalizedFormat, // Store normalized format in metadata
             ...metadata,
             storedAt: new Date().toISOString(),
             size: imageBuffer.length
           }
         },
-        public: true,
-        validation: false
+        validation: false // do not make public; token grants access
       });
-      console.log('File saved to storage, making it public...');
+      console.log('File saved to storage');
 
-      // Make the file publicly accessible
-      await file.makePublic();
-      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-      console.log('File is now public at:', publicUrl);
+      // Build token-based download URL that works in Firebase console
+      const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
+      console.log('Download URL:', publicUrl);
 
       // Save metadata to Firestore
-      console.log('Saving metadata to Firestore...');
+      console.log('[Storage] Saving metadata to Firestore...');
       const docData = {
         originalUrl,
         compressedUrl: publicUrl,
         size: imageBuffer.length,
-        format: fileExtension,
+        format: normalizedFormat, // Use the normalized format
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        ...metadata
+        ...metadata,
+        _storageMetadata: {
+          normalizedFormat,
+          originalFormat: metadata.format,
+          detectedContentType: contentType,
+          storagePath: fileName,
+          downloadToken
+        }
       };
+      console.log('[Storage] Document data to be saved:', JSON.stringify(docData, null, 2));
       console.log('Document data:', JSON.stringify(docData, null, 2));
       
       const docRef = await db.collection('compressedImages').add(docData);

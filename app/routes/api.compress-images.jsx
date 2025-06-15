@@ -151,24 +151,52 @@ export async function action({ request }) {
           });
           
           // Store the compressed image in Firebase Storage
-          console.log('Storing compressed image in Firebase...');
+          const formatToStore = result.format || 'webp';
+          console.log(`[API] Storing image with format: ${formatToStore}`);
+          console.log('[API] Compression result:', {
+            originalSize: result.originalSize,
+            compressedSize: result.compressedSize,
+            format: result.format,
+            hasBuffer: !!result.buffer,
+            bufferLength: result.buffer?.length
+          });
+          
           try {
             const storedImage = await storeCompressedImage(
               result.buffer,
               url,
               {
                 originalSize: result.originalSize,
-                compressionStrategy: strategy
+                compressionStrategy: strategy,
+                format: formatToStore,
+                _compressionMetadata: {
+                  originalFormat: result.originalFormat,
+                  detectedFormat: result.format,
+                  strategy: strategy,
+                  timestamp: new Date().toISOString()
+                }
               }
             );
-            console.log('Image stored successfully at:', storedImage.url);
+            console.log('[API] Image stored successfully at:', storedImage.url);
             
-            results.push({
+            const resultToPush = {
               ...result,
               savings: result.savings || savings, // Use calculated savings if not provided
               compressedUrl: storedImage.url,
-              fromCache: false
+              fromCache: false,
+              storedFormat: formatToStore
+            };
+            
+            console.log('[API] Final result being pushed:', {
+              url: resultToPush.url,
+              originalSize: resultToPush.originalSize,
+              compressedSize: resultToPush.compressedSize,
+              format: resultToPush.format,
+              storedFormat: resultToPush.storedFormat,
+              savings: resultToPush.savings
             });
+            
+            results.push(resultToPush);
           } catch (storageError) {
             console.error('Error storing image in Firebase:', storageError);
             // Still return the result even if storage fails

@@ -71,16 +71,30 @@ export async function storeCompressedImage(imageBuffer, originalUrl, metadata = 
 
       // Save metadata to Firestore
       console.log('[Storage] Saving metadata to Firestore...');
+      // Helper to recursively strip undefined values
+      const stripUndefined = (input) => {
+        if (Array.isArray(input)) return input.map(stripUndefined);
+        if (input && typeof input === 'object') {
+          return Object.entries(input).reduce((acc,[k,v])=>{
+            if (v !== undefined) acc[k]=stripUndefined(v);
+            return acc;
+          },{});
+        }
+        return input;
+      };
+
+      const cleanedMetadata = stripUndefined(metadata);
+
       const docData = {
         originalUrl,
         compressedUrl: publicUrl,
         size: imageBuffer.length,
         format: normalizedFormat, // Use the normalized format
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        ...metadata,
+        ...cleanedMetadata,
         _storageMetadata: {
           normalizedFormat,
-          originalFormat: metadata.format,
+          originalFormat: metadata?.format ?? null,
           detectedContentType: contentType,
           storagePath: fileName,
           downloadToken
@@ -95,7 +109,7 @@ export async function storeCompressedImage(imageBuffer, originalUrl, metadata = 
       return {
         id: docRef.id,
         url: publicUrl,
-        ...metadata
+        ...cleanedMetadata
       };
     } catch (storageError) {
       console.error('Storage error details:', {
@@ -171,6 +185,7 @@ export async function findStoredImage(originalUrl) {
 
     return {
       id: doc.id,
+      url: data.compressedUrl,
       ...data
     };
   } catch (error) {

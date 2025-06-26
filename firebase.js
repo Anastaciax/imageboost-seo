@@ -48,5 +48,14 @@ try {
   }
 }
 
+// Ensure undefined values are ignored in documents (avoids validation errors)
+if (db) {
+  try {
+    db.settings({ ignoreUndefinedProperties: true });
+  } catch (settingsErr) {
+    console.warn('[Firebase] Could not set ignoreUndefinedProperties:', settingsErr.message);
+  }
+}
+
 export { db, bucket };
 export default { db, bucket };

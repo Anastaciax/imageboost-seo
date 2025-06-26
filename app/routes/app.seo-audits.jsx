@@ -33,8 +33,9 @@ export async function loader({ request }) {
     products(first: 50) {
       edges {
         node {
+          id
           title
-          images(first: 1) { edges { node { url altText } } }
+          images(first: 1) { edges { node { id url altText } } }
         }
       }
     }
@@ -47,6 +48,8 @@ export async function loader({ request }) {
     return {
       title: node.title,
       imageUrl: img?.url || '',
+      productId: node.id.split('/').pop(),
+      imageId:   img?.id?.split('/').pop() || null,
       alt: img?.altText || '',
       keyword: null,
       issues: 8,
@@ -80,6 +83,25 @@ export default function SeoAuditsRoute() {
   const navigate = useNavigate();
   const fetcher  = useFetcher();
 
+  /* helpers */
+  const navTo = (newPage, newLimit, newSearch) => {
+    const current = new URLSearchParams(window.location.search);
+    const shopParam = current.get('shop') || undefined;
+    const qp = new URLSearchParams({
+      page: String(newPage),
+      limit: newLimit,
+      search: newSearch,
+    });
+    if (shopParam) qp.set('shop', shopParam);
+    navigate(`?${qp.toString()}`);
+  };
+
+  /* handlers */
+  const handleSearchChange = (val) => {
+    setSearchValue(val);
+    navTo(1, limitValue, val);
+  };
+
   /* state */
   const [searchValue, setSearchValue] = useState(search);
   const [limitValue,  setLimitValue]  = useState(String(itemsPerPage));
@@ -99,7 +121,7 @@ export default function SeoAuditsRoute() {
   });
 
   /* start compression */
-  function compressUrls(urls, strategy = 'tinify') {
+  function compressUrls(urls, strategy = 'tinify', productIds = [], imageIds = []) {
     if (!urls.length) return;
 
     setComp(prev => ({
@@ -116,14 +138,21 @@ export default function SeoAuditsRoute() {
     // Create a FormData object to submit the files
     const formData = new FormData();
     formData.append('strategy', strategy);
-    urls.forEach(url => formData.append('urls', url));
+    urls.forEach((url, i) => {
+      formData.append('urls', url);
+      if (productIds[i]) formData.append('productIds', productIds[i]);
+      if (imageIds[i])  formData.append('imageIds',  imageIds[i]);
+    });
 
     console.log('Submitting to /api/compress-images with strategy:', strategy);
-    
+
     // Submit the form data using the fetcher
+    const shopParam = new URLSearchParams(window.location.search).get('shop');
+    const actionPath = shopParam ? `/api/compress-images?shop=${encodeURIComponent(shopParam)}` : '/api/compress-images';
+
     fetcher.submit(formData, {
       method: 'POST',
-      action: '/api/compress-images',
+      action: actionPath,
       encType: 'multipart/form-data'
     });
   }
@@ -166,12 +195,6 @@ export default function SeoAuditsRoute() {
       toastMsg: 'Compression failed – check server logs',
     }));
   }, [fetcher.error]);
-
-  /* search / pagination */
-  function navTo(newPage, newLimit, newSearch) {
-    const qp = new URLSearchParams({ page: String(newPage), limit: newLimit, search: newSearch });
-    navigate(`?${qp.toString()}`);
-  }
 
   /* aggregate stats */
   const stats = (() => {
@@ -238,8 +261,8 @@ export default function SeoAuditsRoute() {
         {/* filters */}
         <Box paddingInline="4" paddingBlockStart="4" display="flex" gap="4">
           <TextField
-            value={searchValue} onChange={setSearchValue} placeholder="Search by title"
-            clearButton onClearButtonClick={() => setSearchValue('')}
+            value={searchValue} onChange={handleSearchChange} placeholder="Search by title"
+            clearButton onClearButtonClick={() => handleSearchChange('')}
           />
           <Select
             labelHidden label="Items per page" options={['8','16','24','32']} value={limitValue}
@@ -305,10 +328,14 @@ export default function SeoAuditsRoute() {
 
 /* small popover */
 function CompressPopover({ image, onCompress, loading }) {
-  const [open, setOpen] = useState(false);
-  
+const [open, setOpen] = useState(false);
   const handleCompress = (strategy) => {
-    onCompress([image.imageUrl], strategy);
+    onCompress(
+      [image.imageUrl],   // urls[0]
+      strategy,
+      [image.productId],  // productIds[0]
+      [image.imageId],    // imageIds[0]  (may be null)
+    );
     setOpen(false);
   };
 
@@ -353,3 +380,4 @@ function CompressPopover({ image, onCompress, loading }) {
     </Popover>
   );
 }
+

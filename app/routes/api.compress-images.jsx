@@ -57,10 +57,17 @@ export async function action({ request }) {
 
     // Process all images with the selected strategy
     const results = [];
+
+    // Allow frontend to pass custom quality/toWebp flags, else use sensible defaults
+    const quality    = Number(formData.get('quality') || 100);   // 1-100
+    const toWebpFlag = formData.get('toWebp');                   // '1' | 'true' | null
+    const toWebp     = toWebpFlag === '1' || toWebpFlag === 'true';
+
     const compressionOptions = {
-      quality: 40,  // Lower quality for higher compression (1-100)
-      maxWidth: 1200,  // Optional: limit width
-      maxHeight: 1200  // Optional: limit height
+      quality,
+      maxWidth: 1200,
+      maxHeight: 1200,
+      toWebp
     };
 
     // Use the appropriate compression function based on strategy

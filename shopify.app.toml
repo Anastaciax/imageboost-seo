@@ -3,7 +3,7 @@
 client_id = "3fbedd23c542c41765e8e745c828043f"
 name = "ImageBoost SEO"
 handle = "imageboost-seo"
-application_url = "https://fifteen-site-pose-anderson.trycloudflare.com"
+application_url = "https://clothes-miller-belong-amber.trycloudflare.com"
 embedded = true
 
 [build]
@@ -27,9 +27,9 @@ scopes = "write_products,read_products"
 
 [auth]
 redirect_urls = [
-  "https://fifteen-site-pose-anderson.trycloudflare.com/auth/callback",
-  "https://fifteen-site-pose-anderson.trycloudflare.com/auth/shopify/callback",
-  "https://fifteen-site-pose-anderson.trycloudflare.com/api/auth/callback"
+  "https://clothes-miller-belong-amber.trycloudflare.com/auth/callback",
+  "https://clothes-miller-belong-amber.trycloudflare.com/auth/shopify/callback",
+  "https://clothes-miller-belong-amber.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]

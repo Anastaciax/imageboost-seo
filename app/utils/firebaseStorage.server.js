@@ -1,6 +1,7 @@
 import admin from 'firebase-admin';
 import { v4 as uuidv4 } from 'uuid';
 import { db, bucket } from '../../firebase.js';
+export const canonical = url => (url ? url.split('?')[0] : url);
 
 /**
  * Stores a compressed image in Firebase Storage and saves its metadata to Firestore
@@ -84,9 +85,8 @@ export async function storeCompressedImage(imageBuffer, originalUrl, metadata = 
       };
 
       const cleanedMetadata = stripUndefined(metadata);
-
       const docData = {
-        originalUrl,
+        originalUrl: canonical(originalUrl),
         compressedUrl: publicUrl,
         size: imageBuffer.length,
         format: normalizedFormat, // Use the normalized format
@@ -136,36 +136,79 @@ export async function storeCompressedImage(imageBuffer, originalUrl, metadata = 
  * @param {string} originalUrl - The original image URL to check
  * @returns {Promise<Object|null>} - The stored image metadata if found, null otherwise
  */
-export async function findStoredImage(originalUrl) {
+export async function findStoredImage(originalUrl, imageId = null) {
+  // Ensure consistent matching with stored documents (which save canonical URLs)
+  const canonicalUrl = canonical(originalUrl);
 
   try {
+   if (imageId) {
+       const byId = await db.collection('compressedImages')
+                            .where('shopifyImageId', '==', imageId)
+                            .limit(1).get();
+       if (!byId.empty) {
+         const doc = byId.docs[0];
+         return { id: doc.id, ...doc.data() };
+       }
+     }
     const snapshot = await db.collection('compressedImages')
-      .where('originalUrl', '==', originalUrl)
-      .orderBy('timestamp', 'desc')
+      .where('originalUrl', '==', canonicalUrl)
       .limit(1)
       .get();
 
+    let doc;
     if (snapshot.empty) {
-      return null;
+      const byShopifyUrl = await db.collection('compressedImages')
+      .where('shopifyCompressedUrl', '==', canonicalUrl)
+      .limit(1).get();
+  if (!byShopifyUrl.empty) {
+    const doc = byShopifyUrl.docs[0];
+    return { id: doc.id, ...doc.data() };
+  }
+      // Fallback: maybe caller passed the COMPRESSED url (current product image)
+      const fallback = await db.collection('compressedImages')
+      .where('compressedUrl', '==', canonicalUrl)
+      .limit(1)
+      .get();
+
+      if (fallback.empty) {
+        return null;
+      }
+      doc = fallback.docs[0];
+    } else {
+      doc = snapshot.docs[0];
     }
 
-    const doc = snapshot.docs[0];
     const data = doc.data();
+
+
 
     // Determine the storage object path to verify existence.
     let storagePath = data?._storageMetadata?.storagePath;
+
+    // If not recorded, attempt to derive it from the download URL
     if (!storagePath && data.compressedUrl) {
-      // Fallback: derive from URL
       try {
-        const urlParts = new URL(data.compressedUrl);
-        const afterBucket = decodeURIComponent(urlParts.pathname.split('/o/')[1] || '');
-        storagePath = afterBucket.split('?')[0];
-      } catch (_) {
+        const url = new URL(data.compressedUrl);
+        const derived = decodeURIComponent(url.pathname.split('/o/')[1] || '').split('?')[0];
+        if (derived) {
+          storagePath = derived;
+          // Persist the derived path for next time so we don’t repeat this work
+          await doc.ref.set({
+            _storageMetadata: {
+              ...(data._storageMetadata || {}),
+              storagePath: derived
+            }
+          }, { merge: true });
+          console.log('[findStoredImage] Back-filled missing storagePath for', doc.id);
+        }
+      } catch (err) {
+        console.warn('[findStoredImage] Failed to derive storagePath from URL:', err.message);
       }
     }
 
+    // If still unavailable, treat document as stale
     if (!storagePath) {
-      console.warn('[findStoredImage] Could not resolve storage path, treating as missing.');
+      console.warn('[findStoredImage] Could not resolve storage path after fallback, deleting stale doc.');
       await doc.ref.delete();
       return null;
     }
@@ -194,7 +237,102 @@ export async function findStoredImage(originalUrl) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Original image helpers
+// -----------------------------------------------------------------------------
+/**
+ * Stores an ORIGINAL (uncompressed) image buffer in Firebase Storage so that we
+ * can later revert a Shopify replacement. Very similar to storeCompressedImage
+ * but files live under the `original/` folder and get written to their own
+ * Firestore collection (`originalImages`).
+ */
+export async function storeOriginalImage(imageBuffer, originalUrl, metadata = {}) {
+  try {
+    if (!Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
+      throw new Error('Invalid or empty image buffer provided to storeOriginalImage');
+    }
+
+    // Infer format (jpeg/png/webp/gif) from metadata or originalUrl as best we can
+    let format = (metadata.format || '').toLowerCase();
+    if (!format) {
+      const ext = (new URL(originalUrl)).pathname.split('.').pop().toLowerCase();
+      format = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? (ext === 'jpeg' ? 'jpg' : ext) : 'jpg';
+    }
+
+    const normalizedFormat = format === 'jpeg' ? 'jpg' : format;
+    const contentType = `image/${normalizedFormat === 'jpg' ? 'jpeg' : normalizedFormat}`;
+
+    const fileName = `original/${uuidv4()}.${normalizedFormat}`;
+    const file = bucket.file(fileName);
+    const downloadToken = uuidv4();
+
+    await file.save(imageBuffer, {
+      metadata: {
+        contentType,
+        metadata: {
+          firebaseStorageDownloadTokens: downloadToken,
+          originalUrl,
+          format: normalizedFormat,
+          storedAt: new Date().toISOString(),
+          size: imageBuffer.length,
+          ...metadata
+        }
+      },
+      validation: false
+    });
+
+    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
+
+    const docRef = await db.collection('originalImages').add({
+      originalUrl,
+      storedUrl: publicUrl,
+      size: imageBuffer.length,
+      format: normalizedFormat,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      ...metadata,
+      _storageMetadata: {
+        storagePath: fileName,
+        downloadToken,
+        contentType
+      }
+    });
+
+    return {
+      id: docRef.id,
+      url: publicUrl,
+      size: imageBuffer.length,
+      format: normalizedFormat
+    };
+  } catch (err) {
+    console.error('[storeOriginalImage] Error:', err);
+    throw err;
+  }
+}
+
+/**
+ * Retrieve stored ORIGINAL image metadata, if any.
+ */
+export async function findOriginalImage(originalUrl) {
+  try {
+    const snapshot = await db.collection('originalImages')
+      .where('originalUrl', '==', canonical(originalUrl))
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return null;
+
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+    return { id: doc.id, ...data };
+  } catch (err) {
+    console.error('[findOriginalImage] Error:', err);
+    return null;
+  }
+}
+
 export default {
   storeCompressedImage,
-  findStoredImage
+  findStoredImage,
+  storeOriginalImage,
+  findOriginalImage
 };

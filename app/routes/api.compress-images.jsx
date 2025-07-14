@@ -2,7 +2,8 @@ import { json } from '@remix-run/node';
 import { authenticate } from '../shopify.server';
 import { compressMultipleImages as tinifyCompress } from '../utils/imageCompression.server';
 import { compressMultipleImages as sharpCompress } from '../utils/sharpCompression.server';
-import { findStoredImage, storeCompressedImage } from '../utils/firebaseStorage.server';
+import { findStoredImage, storeCompressedImage, storeOriginalImage, findOriginalImage, canonical } from '../utils/firebaseStorage.server.js';
+import { db } from '../../firebase.js';
 
 export async function action({ request }) {
   console.log('=== Compression Request Received ===');
@@ -100,7 +101,7 @@ export async function action({ request }) {
         console.log(`\n--- Processing image ${i + 1}/${imageUrls.length}: ${url} ---`);
 
         // Try to find existing compressed image in storage first
-        const storedImage = await findStoredImage(url);
+        const storedImage = await findStoredImage(url, imageIds[i])
         if (storedImage) {
           console.log('Found existing compressed image in storage:', storedImage.url);
           results.push({
@@ -118,6 +119,29 @@ export async function action({ request }) {
 
         // If not found in storage, compress the image
         console.log('No cached version found, compressing...');
+
+        // Ensure the ORIGINAL image is saved for future revert before we compress
+        const originalAlreadyStored = await findOriginalImage(url);
+        if (!originalAlreadyStored) {
+          try {
+            const origRes = await fetch(url);
+            if (origRes.ok) {
+              const origBuf = Buffer.from(await origRes.arrayBuffer());
+              const contentType = origRes.headers.get('content-type') || '';
+              let fmt = 'jpg';
+              if (contentType.includes('png')) fmt = 'png';
+              else if (contentType.includes('webp')) fmt = 'webp';
+              else if (contentType.includes('gif')) fmt = 'gif';
+
+              await storeOriginalImage(origBuf, url, { format: fmt });
+              console.log('[API] Original image stored in Firebase');
+            } else {
+              console.warn('[API] Could not fetch original image to store:', origRes.status);
+            }
+          } catch (origErr) {
+            console.error('[API] Error while storing original image:', origErr);
+          }
+        }
 
         // Get the generator and process all results
         console.log('Creating compression generator...');
@@ -216,7 +240,8 @@ export async function action({ request }) {
               savings: result.savings || savings,
               compressedUrl: storedImage.url,
               fromCache: false,
-              storedFormat: formatToStore
+              storedFormat: formatToStore,
+              success: true
             };
 
             console.log('[API] Final result being pushed:', {
@@ -260,6 +285,7 @@ export async function action({ request }) {
                     }
                   });
                 }
+                const newImageSrc = createJson.image?.src;
 
                 resultToPush.shopify = {
                   productId,
@@ -267,6 +293,12 @@ export async function action({ request }) {
                   oldImageId,
                   replaced: true
                 };
+               if (storedImage?.id && newImageId && newImageSrc) {
+                   await db.collection('compressedImages').doc(storedImage.id).set({
+                     shopifyImageId:       newImageId,
+                     shopifyCompressedUrl: canonical(newImageSrc)
+                   }, { merge: true });
+                 }
               } catch (shopifyErr) {
                 console.error('[API] Shopify image replace error:', shopifyErr);
                 resultToPush.shopify = {
